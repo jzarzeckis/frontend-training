@@ -76,7 +76,7 @@ function isGameOver(data: Space[][]) {
 }
 
 export function isGameWon(data: Space[][]): boolean {
-  return !data.every(row => row.every(cell => cell !== Space.ClickedSpace)) &&
+  return data.every(row => row.every(cell => cell !== Space.EmptySpace)) &&
     !isGameOver(data);
 }
 
@@ -148,8 +148,11 @@ const App: React.FC = () => {
     <div>
       <h1>MINESWEEPER!!</h1>
       <div id="table-container">
-        {
+      {
           isGameOver(data) ? <div>You lose</div> : null
+        }
+        {
+          isGameWon(data) ? <div>You win</div> : null
         }
           <table>
             { data.map(((row, rowIndex) => <tr>
