@@ -50,6 +50,20 @@ function nearbyBombCount(
   }, 0);
 }
 
+function isCellExploded(cell: Space) {
+  if (cell === Space.ExplodedBomb) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+function isGameOver(data: Space[][]) {
+  return data.some((row) =>
+    row.some(cell => cell === Space.ExplodedBomb)
+  );
+}
+
 function stateAfterClick(prevState: Space[][], cellClicked: number, rowClicked: number): Space[][] {
   // Change state of the clicked row to switch color
   const nextState = prevState.map((row, rowIndex) => 
@@ -107,18 +121,21 @@ const App: React.FC = () => {
     <div>
       <h1>MINESWEEPER!!</h1>
       <div id="table-container">
-        <table>
-          { data.map(((row, rowIndex) => <tr>
-            { row.map((cell, cellIndex) => 
-              <td
-                onClick={() => fieldClicked(rowIndex, cellIndex)}
-                className={bombClass(cell)}
-              >
-                { cell === Space.ClickedSpace ? nearbyBombCount(rowIndex, cellIndex, data) : "" }
-              </td>
-            ) }
-          </tr>)) }
-        </table>
+        {
+          isGameOver(data) ? <div>You lose</div> : null
+        }
+          <table>
+            { data.map(((row, rowIndex) => <tr>
+              { row.map((cell, cellIndex) => 
+                <td
+                  onClick={() => fieldClicked(rowIndex, cellIndex)}
+                  className={bombClass(cell)}
+                >
+                  { cell === Space.ClickedSpace ? nearbyBombCount(rowIndex, cellIndex, data) : "" }
+                </td>
+              ) }
+            </tr>)) }
+          </table>
       </div>
     </div>
   );
