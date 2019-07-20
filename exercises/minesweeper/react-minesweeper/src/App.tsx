@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
+import produce from 'immer';
 import './App.css';
 
-enum Space {
+export enum Space {
   HiddenBomb,
   EmptySpace,
   ExplodedBomb,
   ClickedSpace
 }
-
 type position = [number, number];
 // Array containing **relative** indices of the cells around some cell
 const relativeNeighbors: position[] = [
@@ -16,7 +16,7 @@ const relativeNeighbors: position[] = [
   [-1, 1], [0, 1], [1, 1]
 ]
 
-function bombClass(input: Space) {
+export function bombClass(input: Space) {
   if (input === Space.HiddenBomb || input === Space.EmptySpace) {
     return '';
   } else if (input === Space.ExplodedBomb) {
@@ -26,13 +26,13 @@ function bombClass(input: Space) {
   }
 }
 
-function generateRandomFields(width: number, height: number): Space[][] {
+export function generateRandomFields(width: number, height: number): Space[][] {
   return Array(height).fill(null)
     .map(() => Array(width).fill(null)
       .map(() => Math.random() > 0.9 ? Space.HiddenBomb : Space.EmptySpace));
 }
 
-function nearbyBombCount(
+export function nearbyBombCount(
   rowIndex: number,
   cellIndex: number,
   matrix: Array<Array<Space>>
@@ -75,23 +75,33 @@ function isGameOver(data: Space[][]) {
   );
 }
 
+export function isGameWon(data: Space[][]): boolean {
+  return !data.every(row => row.every(cell => cell !== Space.ClickedSpace)) &&
+    !isGameOver(data);
+}
+
 function stateAfterClick(prevState: Space[][], cellClicked: number, rowClicked: number): Space[][] {
   // Change state of the clicked row to switch color
-  const nextState = prevState.map((row, rowIndex) => 
-    row.map((cell, cellIndex) => {
-      // This function is called for **EVERY** cell in the matrix
-      if (rowIndex === rowClicked && cellIndex === cellClicked) {
-        // If we're in this block, it means we're looking at the cell that was clicked
-        if (cell === Space.HiddenBomb || cell === Space.ExplodedBomb) {
-          return Space.ExplodedBomb;
-        } else {
-          return Space.ClickedSpace;
-        }
-      } else {
-        // Cells that were not clicked are not changed, so we return the same element in the map call
-        return cell;
-      }
-    }));
+  const nextState = produce(prevState, draft => {
+    const cell = prevState[rowClicked][cellClicked];
+    draft[rowClicked][cellClicked] = (cell === Space.HiddenBomb || cell === Space.ExplodedBomb) ?
+      Space.ExplodedBomb : Space.ClickedSpace
+  });
+  // const nextState = prevState.map((row, rowIndex) => 
+  //   row.map((cell, cellIndex) => {
+  //     // This function is called for **EVERY** cell in the matrix
+  //     if (rowIndex === rowClicked && cellIndex === cellClicked) {
+  //       // If we're in this block, it means we're looking at the cell that was clicked
+  //       if (cell === Space.HiddenBomb || cell === Space.ExplodedBomb) {
+  //         return Space.ExplodedBomb;
+  //       } else {
+  //         return Space.ClickedSpace;
+  //       }
+  //     } else {
+  //       // Cells that were not clicked are not changed, so we return the same element in the map call
+  //       return cell;
+  //     }
+  //   }));
 
   // Check if cell clicked has 0 neighbor bombs
   if (
