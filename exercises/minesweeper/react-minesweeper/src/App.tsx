@@ -82,54 +82,7 @@ export function isGameWon(data: Space[][]): boolean {
 
 function stateAfterClick(prevState: Space[][], cellClicked: number, rowClicked: number): Space[][] {
   // Change state of the clicked row to switch color
-  const nextState = produce(prevState, draft => {
-    const cell = prevState[rowClicked][cellClicked];
-    draft[rowClicked][cellClicked] = (cell === Space.HiddenBomb || cell === Space.ExplodedBomb) ?
-      Space.ExplodedBomb : Space.ClickedSpace
-  });
-  // const nextState = prevState.map((row, rowIndex) => 
-  //   row.map((cell, cellIndex) => {
-  //     // This function is called for **EVERY** cell in the matrix
-  //     if (rowIndex === rowClicked && cellIndex === cellClicked) {
-  //       // If we're in this block, it means we're looking at the cell that was clicked
-  //       if (cell === Space.HiddenBomb || cell === Space.ExplodedBomb) {
-  //         return Space.ExplodedBomb;
-  //       } else {
-  //         return Space.ClickedSpace;
-  //       }
-  //     } else {
-  //       // Cells that were not clicked are not changed, so we return the same element in the map call
-  //       return cell;
-  //     }
-  //   }));
-
-  // Check if cell clicked has 0 neighbor bombs
-  if (
-    nextState[rowClicked][cellClicked] === Space.ClickedSpace &&
-    nearbyBombCount(rowClicked, cellClicked, nextState) === 0
-  ) {
-    // Go through all neighbors, and click them all
-    return relativeNeighbors.reduce((state: Space[][], neighbor: position) => {
-      const cellId = cellClicked + neighbor[0];
-      const rowId = rowClicked + neighbor[1];
-
-      // Check if neighbor is within bounds of field
-      if (cellId < 0 || rowId < 0 || rowId >= state.length || cellId >= state[0].length) {
-        // Don't click anything outside bounds
-        return state;
-      }
-      const spaceClicked = state[rowId][cellId];
-      if (spaceClicked !== Space.EmptySpace) {
-        // Don't click on spaces that have already been clicked
-        return state;
-      }
-      return stateAfterClick(state, cellId, rowId);
-    }, nextState);
-  } else {
-    // Since number on cell > 0, just return the state
-    // dont click more cells
-    return nextState;
-  }
+  return prevState;
 }
 
 const App: React.FC = () => {
