@@ -1,12 +1,7 @@
-import { bombClass, Space, generateRandomFields, nearbyBombCount, isGameWon } from './App';
+import { bombClass, Space, generateRandomFields, nearbyBombCount, isGameWon, stateAfterClick } from './App';
 
 function textToMatrix(input: string): Space[][] {
-  return input.split('\n').map(row => row.trim().split('').map(s => 
-    s === "X" ? Space.ExplodedBomb :
-      s === "^" ? Space.EmptySpace :
-      s === "#" ? Space.ClickedSpace :
-      s === "@" ? Space.HiddenBomb : Space.HiddenBomb
-  ))
+  return input.trim().split('\n').map(row => row.trim().split('').map(x => x as Space))
 }
 
 it('adds the correct classes to table cells', () => {
@@ -51,3 +46,36 @@ it('knows when I have won', () => {
                                  #X#
                                  ###`))).toBe(false);
 })
+
+describe("The state update function", () => {
+  it('Clicking on a hidden bomb returns an exploded bomb', () => {
+    expect(
+      stateAfterClick(
+        textToMatrix("@"), 0, 0
+      )
+    ).toEqual(textToMatrix("X"));
+  })
+
+  it('Clicking on empty space should turn it into clicked space', () => {
+    const stateBefore = textToMatrix(`
+      ^^
+      @^
+    `);
+    const expectedStateAfter = `
+      ^#
+      @^
+    `;
+
+    expect(stateAfterClick(stateBefore, 1, 0)).toEqual(textToMatrix(expectedStateAfter));
+  });
+
+  it('Clicking on an exploded bomb should not change the state', () => {
+    const state = `
+      ^X
+      @^
+    `;
+    expect(
+      stateAfterClick(textToMatrix(state), 1, 0)
+    ).toEqual(textToMatrix(state));
+  });
+});

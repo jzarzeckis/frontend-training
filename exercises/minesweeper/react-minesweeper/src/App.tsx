@@ -3,10 +3,10 @@ import produce from 'immer';
 import './App.css';
 
 export enum Space {
-  HiddenBomb,
-  EmptySpace,
-  ExplodedBomb,
-  ClickedSpace
+  HiddenBomb = "@",
+  EmptySpace = "^",
+  ExplodedBomb = "X",
+  ClickedSpace = '#'
 }
 type position = [number, number];
 // Array containing **relative** indices of the cells around some cell
@@ -80,8 +80,9 @@ export function isGameWon(data: Space[][]): boolean {
     !isGameOver(data);
 }
 
-function stateAfterClick(prevState: Space[][], cellClicked: number, rowClicked: number): Space[][] {
+export function stateAfterClick(prevState: Space[][], cellClicked: number, rowClicked: number): Space[][] {
   // Change state of the clicked row to switch color
+  prevState[rowClicked][cellClicked] = Space.ExplodedBomb;
   return prevState;
 }
 
@@ -94,7 +95,7 @@ const App: React.FC = () => {
   function fieldClicked(rowClicked: number = 0, cellClicked: number = 0) {
     // When field is clicked, we check how would that affect the state,
     // and update it in react, so that react would render it
-    setData(stateAfterClick(data, cellClicked, rowClicked));
+    setData(JSON.parse(JSON.stringify(stateAfterClick(data, cellClicked, rowClicked))));
   }
 
   return (
