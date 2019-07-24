@@ -8,7 +8,7 @@ const form = document.getElementById('form');
 const inputElement = document.getElementById('userInput');
 const addButton = document.getElementById('enter');
 
-const submitHandler = (inputElement, items, drawList) => (e) => {
+export const submitHandler = (inputElement, items, drawList) => (e) => {
   // Prevent browser from reloading the page;
   e.preventDefault();
 
