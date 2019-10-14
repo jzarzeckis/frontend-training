@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import produce from 'immer';
 import './App.css';
 
+const assumedBombDensity = 0.2;
+
 export enum Space {
   HiddenBomb = "Hidden",
   EmptySpace = "Empty",
@@ -11,13 +13,27 @@ export enum Space {
 }
 type VisibleCell = Space.ExplodedBomb | Space.EmptySpace | Space.MarkedAsBomb | 'SuggestedClick' | number;
 type VisibleState = VisibleCell[][];
+
+/**
+ * [ column, row ]
+ */
 type Position = [number, number];
 // Array containing **relative** indices of the cells around some cell
 const relativeNeighbors: Position[] = [
   [-1, -1], [0, -1], [1, -1],
   [-1, 0], [1, 0],
   [-1, 1], [0, 1], [1, 1]
-]
+];
+
+function relativeNeighborContent<T>(data: T[][], col: number, row: number): { content: T, col: number, row: number }[] {
+  return relativeNeighbors.map(([ rCol, rRow ]) => {
+    const absCol = col + rCol;
+    const absRow = row + rRow;
+    if (absRow < 0 || absRow >= data.length) return null;
+    if (absCol < 0 || absCol >= data[absRow].length) return null;
+    return { content: data[absRow][absCol], col: absCol, row: absRow };
+  }).filter((x): x is { content: T, col: number, row: number } => x !== null);
+}
 
 export function bombClass(input: VisibleCell) {
   if (input === Space.EmptySpace) {
@@ -45,23 +61,9 @@ export function nearbyBombCount(
   matrix: Array<Array<Space>>
 ) {
   // Iterate through all neighbors of this cell, and count bombs
-  return relativeNeighbors.reduce((count, relativePos) => {
-    // Turn the relative position absolute by adding it to current cell index
-    const rowIdToCheck = rowIndex + relativePos[1];
-    const cellIdToCheck = cellIndex + relativePos[0];
-    if (rowIdToCheck < 0 || rowIdToCheck >= matrix.length) {
-      // If it is outside bounds, don't compare, and just return count
-      return count;
-    }
-    // Now space is guaranteed to be within bounds
-    const space = matrix[rowIdToCheck][cellIdToCheck];
-    if (space === Space.HiddenBomb || space === Space.ExplodedBomb) {
-      // Hidden bombs and exploded ones are counted as 1;
-      return count + 1;
-    }
-    // If this code is reached, it's like an else - where the currently accumulated count is retained
-    return count;
-  }, 0);
+  return relativeNeighborContent(matrix, cellIndex, rowIndex).reduce((count, { content }) =>
+    content === Space.HiddenBomb || content === Space.ExplodedBomb ? count + 1 : count
+  , 0);
 }
 
 function stateToVisible(data: Space[][]): VisibleState {
@@ -71,14 +73,6 @@ function stateToVisible(data: Space[][]): VisibleState {
     cell === Space.MarkedAsBomb ? cell :
     nearbyBombCount(rowIndex, cellIndex, data)
   ));
-}
-
-function isCellExploded(cell: Space) {
-  if (cell === Space.ExplodedBomb) {
-    return true;
-  } else {
-    return false;
-  }
 }
 
 /**
@@ -96,8 +90,43 @@ export function isGameWon(data: Space[][]): boolean {
     !isGameOver(data);
 }
 
+/**
+ * Returns the probability of hitting a bomb when clicking any unclicked neighbor of a given cell
+ * @param data 
+ * @param row 
+ * @param column 
+ */
+function neighborBombProbability(data: VisibleState, row: number, column: number): number | null {
+  const cell = data[row][column];
+  if (typeof cell !== 'number') {
+    return null; // TODO: Maybe something else?
+  }
+  const neighbors = relativeNeighborContent(data, column, row);
+  const unTouchedCount = neighbors.filter(({ content }) => content === Space.EmptySpace).length;
+  const knownNeighborBombs = neighbors.filter(({ content }) => content === Space.MarkedAsBomb).length;
+  return unTouchedCount / (cell - knownNeighborBombs);
+}
+
+function cellBombProbability(data: VisibleState, neighborProbabilities: Array<Array<number | null>>, row: number, column: number): number {
+  const cell = data[row][column];
+  if (cell === Space.ExplodedBomb || cell === Space.MarkedAsBomb) {
+    return 1;
+  } else if (typeof cell === 'number') {
+    return 0;
+  }
+  const neighbors = relativeNeighborContent(neighborProbabilities, column, row)
+    .filter((x): x is { content: number, row: number, col: number } => x.content !== null);
+  if (!neighbors.length) {
+    return assumedBombDensity;
+  }
+  return 1 - neighbors.reduce((acc, { content: neighbor }) => (1 - neighbor) * acc, assumedBombDensity)
+}
+
 function nextClickableCells(data: VisibleState): Position[] {
-  return [[0, 0]]
+  const neighborProbabilities = data.map((row, rowIndex) => row.map((cell, cellIndex) => neighborBombProbability(data, rowIndex, cellIndex)));
+  const cellProbabilities = data.map((row, rowIndex) => row.map((cell, cellIndex) => cellBombProbability(data, neighborProbabilities, rowIndex, cellIndex)));
+  // const groups = cellProbabilities.map
+  return [[0, 0]];
 }
 
 function visibleStateWithSuggestions(data: VisibleState): VisibleState {
