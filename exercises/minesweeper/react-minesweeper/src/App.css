@@ -9,12 +9,19 @@ td {
   width: 50px;
   height: 50px;
   text-align: center;
+  box-sizing: border-box;
 }
 .bomb {
   background-color: indianred;
 }
 .open {
   background-color: #61dafb;
+}
+.markedBomb {
+  background-color: chocolate;
+}
+.nextClick {
+  border: 3px dashed mediumseagreen;
 }
 #table-container {
   align-content: center;

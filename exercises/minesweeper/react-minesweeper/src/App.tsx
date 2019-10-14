@@ -3,24 +3,31 @@ import produce from 'immer';
 import './App.css';
 
 export enum Space {
-  HiddenBomb,
-  EmptySpace,
-  ExplodedBomb,
-  ClickedSpace
+  HiddenBomb = "Hidden",
+  EmptySpace = "Empty",
+  ExplodedBomb = "Exploded",
+  ClickedSpace = "Clicked",
+  MarkedAsBomb = "Marked"
 }
-type position = [number, number];
+type VisibleCell = Space.ExplodedBomb | Space.EmptySpace | Space.MarkedAsBomb | 'SuggestedClick' | number;
+type VisibleState = VisibleCell[][];
+type Position = [number, number];
 // Array containing **relative** indices of the cells around some cell
-const relativeNeighbors: position[] = [
+const relativeNeighbors: Position[] = [
   [-1, -1], [0, -1], [1, -1],
   [-1, 0], [1, 0],
   [-1, 1], [0, 1], [1, 1]
 ]
 
-export function bombClass(input: Space) {
-  if (input === Space.HiddenBomb || input === Space.EmptySpace) {
+export function bombClass(input: VisibleCell) {
+  if (input === Space.EmptySpace) {
     return '';
   } else if (input === Space.ExplodedBomb) {
     return 'bomb';
+  } else if (input === Space.MarkedAsBomb) {
+    return 'markedBomb';
+  } else if (input === 'SuggestedClick') {
+    return 'nextClick'
   } else {
     return 'open';
   }
@@ -57,6 +64,15 @@ export function nearbyBombCount(
   }, 0);
 }
 
+function stateToVisible(data: Space[][]): VisibleState {
+  return data.map((row, rowIndex) => row.map((cell, cellIndex) =>
+    cell === Space.HiddenBomb || cell == Space.EmptySpace ? Space.EmptySpace :
+    cell === Space.ExplodedBomb ? cell :
+    cell === Space.MarkedAsBomb ? cell :
+    nearbyBombCount(rowIndex, cellIndex, data)
+  ));
+}
+
 function isCellExploded(cell: Space) {
   if (cell === Space.ExplodedBomb) {
     return true;
@@ -78,6 +94,18 @@ function isGameOver(data: Space[][]) {
 export function isGameWon(data: Space[][]): boolean {
   return data.every(row => row.every(cell => cell !== Space.EmptySpace)) &&
     !isGameOver(data);
+}
+
+function nextClickableCells(data: VisibleState): Position[] {
+  return [[0, 0]]
+}
+
+function visibleStateWithSuggestions(data: VisibleState): VisibleState {
+  return produce(data, draft => {
+    for (const [ cell, row ] of nextClickableCells(data)) {
+      draft[row][cell] = 'SuggestedClick';
+    }
+  });
 }
 
 function stateAfterClick(prevState: Space[][], cellClicked: number, rowClicked: number): Space[][] {
@@ -109,7 +137,7 @@ function stateAfterClick(prevState: Space[][], cellClicked: number, rowClicked: 
     nearbyBombCount(rowClicked, cellClicked, nextState) === 0
   ) {
     // Go through all neighbors, and click them all
-    return relativeNeighbors.reduce((state: Space[][], neighbor: position) => {
+    return relativeNeighbors.reduce((state: Space[][], neighbor: Position) => {
       const cellId = cellClicked + neighbor[0];
       const rowId = rowClicked + neighbor[1];
 
@@ -133,8 +161,8 @@ function stateAfterClick(prevState: Space[][], cellClicked: number, rowClicked: 
 }
 
 const App: React.FC = () => {
-  const width = 5;
-  const height = 4;
+  const width = 10;
+  const height = 10;
 
   const [ data, setData ] = useState(generateRandomFields(width, height));
 
@@ -143,6 +171,9 @@ const App: React.FC = () => {
     // and update it in react, so that react would render it
     setData(stateAfterClick(data, cellClicked, rowClicked));
   }
+
+  const visibleSpaces = stateToVisible(data);
+  const visibleAndSuggested = visibleStateWithSuggestions(visibleSpaces);
 
   return (
     <div>
@@ -155,13 +186,13 @@ const App: React.FC = () => {
           isGameWon(data) ? <div>You win</div> : null
         }
           <table>
-            { data.map(((row, rowIndex) => <tr>
+            { visibleAndSuggested.map(((row, rowIndex) => <tr>
               { row.map((cell, cellIndex) => 
                 <td
                   onClick={() => fieldClicked(rowIndex, cellIndex)}
                   className={bombClass(cell)}
                 >
-                  { cell === Space.ClickedSpace ? nearbyBombCount(rowIndex, cellIndex, data) : "" }
+                  { typeof cell === 'number' ? cell : '' }
                 </td>
               ) }
             </tr>)) }
