@@ -96,8 +96,10 @@ export function isGameWon(data: Space[][]): boolean {
 }
 
 /**
- * Returns the probability of hitting a bomb when clicking any unclicked neighbor of a given cell
- * @param data 
+ * Returns the probability of hitting a bomb when clicking any (unclicked AND unmarked as a mine AND unmarked as a safe space)
+ * neighbor of a given cell.
+ * Returns null for unclicked cells - as they don't yield any new information about probabilities
+ * @param data The matrix of the visible cells
  * @param row 
  * @param column 
  */
@@ -109,9 +111,19 @@ function neighborBombProbability(data: VisibleState, row: number, column: number
   const neighbors = relativeNeighborContent(data, column, row);
   const unTouchedCount = neighbors.filter(({ content }) => content === Space.EmptySpace || content === 'SuggestedClick').length;
   const knownNeighborBombs = neighbors.filter(({ content }) => content === Space.MarkedAsBomb).length;
-  return unTouchedCount / (cell - knownNeighborBombs);
+  return (cell - knownNeighborBombs) / unTouchedCount;
 }
 
+/**
+ * Deduces the probability that there is a bomb in a given undiscovered field
+ * For example - 
+ * if there is a neighbor with a number 1, and the questioned cell is it's only undiscovered neighbor,
+ * and there were no other bombs around the questioned node, then it's 100% clear that the questioned cell has a bomb
+ * @param data 
+ * @param neighborProbabilities 
+ * @param row 
+ * @param column 
+ */
 function cellBombProbability(data: VisibleState, neighborProbabilities: Array<Array<number | null>>, row: number, column: number): number {
   const cell = data[row][column];
   if (cell === Space.ExplodedBomb || cell === Space.MarkedAsBomb) {
@@ -125,11 +137,11 @@ function cellBombProbability(data: VisibleState, neighborProbabilities: Array<Ar
   if (!neighbors.length) {
     return assumedBombDensity;
   }
-  if (neighbors.includes(1)) {
-    return 1;
-  }
   if (neighbors.includes(0)) {
     return 0;
+  }
+  if (neighbors.includes(1)) {
+    return 1;
   }
   return neighbors.reduce((acc, nProb) =>
     acc + nProb / neighbors.length
@@ -149,12 +161,13 @@ function nextSuggestedCells(data: VisibleState): VisibleState {
   const newSafeSpotsDiscovered = cellProbabilities.filter(({ value, prob }) => (value === Space.EmptySpace || value === 'SuggestedClick') && prob === 0);
   const otherClickableCells = cellProbabilities.filter(({ value, prob }) => (value === Space.EmptySpace || value === 'SuggestedClick') && prob !== 0 && prob !== 1);
   const groups = groupBy(otherClickableCells, ({ prob }) => prob);
-  const lowest = Math.min(...Object.keys(groups).map(Number));
+  // Cells having the lowest probability of containing a bomb
+  const lowest = otherClickableCells.length > 0 ? groups[Math.min(...Object.keys(groups).map(Number))] : [];
   const nextState = applySuggestions(
     data,
     newBombsDisvovered.map(cellPropsToPosition),
     newSafeSpotsDiscovered.map(cellPropsToPosition),
-    groups[lowest].map(cellPropsToPosition)
+    lowest.map(cellPropsToPosition)
   );
   if (newBombsDisvovered.length === 0 && newSafeSpotsDiscovered.length === 0) {
     return nextState;
@@ -213,8 +226,10 @@ const App: React.FC = () => {
     setData(stateAfterClick(data, cellClicked, rowClicked));
   }
 
+
   const visibleSpaces = stateToVisible(data);
   const visibleAndSuggested = nextSuggestedCells(visibleSpaces);
+  // console.log('probabilities', data.map((row, rowIndex) => row.map((cell, cellIndex) => neighborBombProbability(visibleAndSuggested, rowIndex, cellIndex))));
 
   return (
     <div>
@@ -237,6 +252,14 @@ const App: React.FC = () => {
               </td>
             )}
           </tr>))}
+        </table>
+        <h3>Legend</h3>
+        <table>
+          <tr>{
+            [Space.ExplodedBomb, Space.EmptySpace, Space.MarkedAsBomb, 'SuggestedClick', 'KnownSafeSpace'].map(x =>
+              <td className={bombClass(x as any)}>{x}</td>
+            )
+          }</tr>
         </table>
       </div>
     </div>
