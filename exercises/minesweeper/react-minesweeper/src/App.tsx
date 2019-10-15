@@ -3,9 +3,9 @@ import produce from 'immer';
 import './App.css';
 import { groupBy } from 'lodash';
 
-const assumedBombDensity = 0.15;
+const assumedBombDensity = 0.2;
 
-const actualBombDensity = 0.15;
+const actualBombDensity = 0.2;
 
 export enum Space {
   HiddenBomb = "Hidden",
@@ -242,24 +242,29 @@ const App: React.FC = () => {
           isGameWon(data) ? <div>You win</div> : null
         }
         <table>
-          {visibleAndSuggested.map(((row, rowIndex) => <tr>
-            {row.map((cell, cellIndex) =>
-              <td
-                onClick={() => fieldClicked(rowIndex, cellIndex)}
-                className={bombClass(cell)}
-              >
-                {typeof cell === 'number' ? cell : ''}
-              </td>
-            )}
-          </tr>))}
+          <tbody>
+            {visibleAndSuggested.map(((row, rowIndex) => <tr key={`r-${rowIndex}`}>
+              {row.map((cell, cellIndex) =>
+                <td
+                  key={`c-${row}-${cellIndex}`}
+                  onClick={() => fieldClicked(rowIndex, cellIndex)}
+                  className={bombClass(cell)}
+                >
+                  {typeof cell === 'number' ? cell : ''}
+                </td>
+              )}
+            </tr>))}
+          </tbody>
         </table>
         <h3>Legend</h3>
         <table>
-          <tr>{
-            [Space.ExplodedBomb, Space.EmptySpace, Space.MarkedAsBomb, 'SuggestedClick', 'KnownSafeSpace'].map(x =>
-              <td className={bombClass(x as any)}>{x}</td>
-            )
-          }</tr>
+          <tbody>
+            <tr>{
+              [Space.ExplodedBomb, Space.EmptySpace, Space.MarkedAsBomb, 'SuggestedClick', 'KnownSafeSpace'].map(x =>
+                <td key={x} className={bombClass(x as any)}>{x}</td>
+              )
+            }</tr>
+          </tbody>
         </table>
       </div>
     </div>
