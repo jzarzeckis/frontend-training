@@ -3,9 +3,9 @@ import produce from 'immer';
 import './App.css';
 import { groupBy } from 'lodash';
 
-const assumedBombDensity = 0.8;
+const assumedBombDensity = 0.15;
 
-const actualBombDensity = 0.3;
+const actualBombDensity = 0.15;
 
 export enum Space {
   HiddenBomb = "Hidden",
@@ -107,7 +107,7 @@ function neighborBombProbability(data: VisibleState, row: number, column: number
     return null; // TODO: Maybe something else?
   }
   const neighbors = relativeNeighborContent(data, column, row);
-  const unTouchedCount = neighbors.filter(({ content }) => content === Space.EmptySpace).length;
+  const unTouchedCount = neighbors.filter(({ content }) => content === Space.EmptySpace || content === 'SuggestedClick').length;
   const knownNeighborBombs = neighbors.filter(({ content }) => content === Space.MarkedAsBomb).length;
   return unTouchedCount / (cell - knownNeighborBombs);
 }
@@ -145,9 +145,9 @@ function nextSuggestedCells(data: VisibleState): VisibleState {
   const cellProbabilities = data.flatMap((row, rowIndex) =>
     row.map((cell, cellIndex) =>
       ({ value: cell, prob: cellBombProbability(data, neighborProbabilities, rowIndex, cellIndex), rowIndex, cellIndex })));
-  const newBombsDisvovered = cellProbabilities.filter(({ value, prob }) => value === Space.EmptySpace && prob === 1);
-  const newSafeSpotsDiscovered = cellProbabilities.filter(({ value, prob }) => value === Space.EmptySpace && prob === 0);
-  const otherClickableCells = cellProbabilities.filter(({ value, prob }) => value === Space.EmptySpace && prob !== 0 && prob !== 1);
+  const newBombsDisvovered = cellProbabilities.filter(({ value, prob }) => (value === Space.EmptySpace || value === 'SuggestedClick') && prob === 1);
+  const newSafeSpotsDiscovered = cellProbabilities.filter(({ value, prob }) => (value === Space.EmptySpace || value === 'SuggestedClick') && prob === 0);
+  const otherClickableCells = cellProbabilities.filter(({ value, prob }) => (value === Space.EmptySpace || value === 'SuggestedClick') && prob !== 0 && prob !== 1);
   const groups = groupBy(otherClickableCells, ({ prob }) => prob);
   const lowest = Math.min(...Object.keys(groups).map(Number));
   const nextState = applySuggestions(
