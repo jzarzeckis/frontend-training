@@ -23,6 +23,9 @@ td {
 .nextClick {
   border: 3px dashed mediumseagreen;
 }
+.safeSpace {
+  border: 6px dashed deeppink;
+}
 #table-container {
   align-content: center;
 }

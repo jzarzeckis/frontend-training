@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import produce from 'immer';
 import './App.css';
+import { groupBy } from 'lodash';
 
-const assumedBombDensity = 0.2;
+const assumedBombDensity = 0.8;
+
+const actualBombDensity = 0.3;
 
 export enum Space {
   HiddenBomb = "Hidden",
@@ -11,7 +14,7 @@ export enum Space {
   ClickedSpace = "Clicked",
   MarkedAsBomb = "Marked"
 }
-type VisibleCell = Space.ExplodedBomb | Space.EmptySpace | Space.MarkedAsBomb | 'SuggestedClick' | number;
+type VisibleCell = Space.ExplodedBomb | Space.EmptySpace | Space.MarkedAsBomb | 'SuggestedClick' | 'KnownSafeSpace' | number;
 type VisibleState = VisibleCell[][];
 
 /**
@@ -26,7 +29,7 @@ const relativeNeighbors: Position[] = [
 ];
 
 function relativeNeighborContent<T>(data: T[][], col: number, row: number): { content: T, col: number, row: number }[] {
-  return relativeNeighbors.map(([ rCol, rRow ]) => {
+  return relativeNeighbors.map(([rCol, rRow]) => {
     const absCol = col + rCol;
     const absRow = row + rRow;
     if (absRow < 0 || absRow >= data.length) return null;
@@ -43,7 +46,9 @@ export function bombClass(input: VisibleCell) {
   } else if (input === Space.MarkedAsBomb) {
     return 'markedBomb';
   } else if (input === 'SuggestedClick') {
-    return 'nextClick'
+    return 'nextClick';
+  } else if (input === 'KnownSafeSpace') {
+    return 'safeSpace';
   } else {
     return 'open';
   }
@@ -52,7 +57,7 @@ export function bombClass(input: VisibleCell) {
 export function generateRandomFields(width: number, height: number): Space[][] {
   return Array(height).fill(null)
     .map(() => Array(width).fill(null)
-      .map(() => Math.random() > 0.9 ? Space.HiddenBomb : Space.EmptySpace));
+      .map(() => Math.random() < actualBombDensity ? Space.HiddenBomb : Space.EmptySpace));
 }
 
 export function nearbyBombCount(
@@ -63,15 +68,15 @@ export function nearbyBombCount(
   // Iterate through all neighbors of this cell, and count bombs
   return relativeNeighborContent(matrix, cellIndex, rowIndex).reduce((count, { content }) =>
     content === Space.HiddenBomb || content === Space.ExplodedBomb ? count + 1 : count
-  , 0);
+    , 0);
 }
 
 function stateToVisible(data: Space[][]): VisibleState {
   return data.map((row, rowIndex) => row.map((cell, cellIndex) =>
-    cell === Space.HiddenBomb || cell == Space.EmptySpace ? Space.EmptySpace :
-    cell === Space.ExplodedBomb ? cell :
-    cell === Space.MarkedAsBomb ? cell :
-    nearbyBombCount(rowIndex, cellIndex, data)
+    cell === Space.HiddenBomb || cell === Space.EmptySpace ? Space.EmptySpace :
+      cell === Space.ExplodedBomb ? cell :
+        cell === Space.MarkedAsBomb ? cell :
+          nearbyBombCount(rowIndex, cellIndex, data)
   ));
 }
 
@@ -111,27 +116,62 @@ function cellBombProbability(data: VisibleState, neighborProbabilities: Array<Ar
   const cell = data[row][column];
   if (cell === Space.ExplodedBomb || cell === Space.MarkedAsBomb) {
     return 1;
-  } else if (typeof cell === 'number') {
+  } else if (typeof cell === 'number' || cell === 'KnownSafeSpace') {
     return 0;
   }
   const neighbors = relativeNeighborContent(neighborProbabilities, column, row)
-    .filter((x): x is { content: number, row: number, col: number } => x.content !== null);
+    .filter((x): x is { content: number, row: number, col: number } => x.content !== null)
+    .map(({ content }) => content);
   if (!neighbors.length) {
     return assumedBombDensity;
   }
-  return 1 - neighbors.reduce((acc, { content: neighbor }) => (1 - neighbor) * acc, assumedBombDensity)
+  if (neighbors.includes(1)) {
+    return 1;
+  }
+  if (neighbors.includes(0)) {
+    return 0;
+  }
+  return neighbors.reduce((acc, nProb) =>
+    acc + nProb / neighbors.length
+    , 0);
 }
 
-function nextClickableCells(data: VisibleState): Position[] {
+function cellPropsToPosition({ cellIndex, rowIndex }: { cellIndex: number, rowIndex: number }): Position {
+  return [cellIndex, rowIndex];
+}
+
+function nextSuggestedCells(data: VisibleState): VisibleState {
   const neighborProbabilities = data.map((row, rowIndex) => row.map((cell, cellIndex) => neighborBombProbability(data, rowIndex, cellIndex)));
-  const cellProbabilities = data.map((row, rowIndex) => row.map((cell, cellIndex) => cellBombProbability(data, neighborProbabilities, rowIndex, cellIndex)));
-  // const groups = cellProbabilities.map
-  return [[0, 0]];
+  const cellProbabilities = data.flatMap((row, rowIndex) =>
+    row.map((cell, cellIndex) =>
+      ({ value: cell, prob: cellBombProbability(data, neighborProbabilities, rowIndex, cellIndex), rowIndex, cellIndex })));
+  const newBombsDisvovered = cellProbabilities.filter(({ value, prob }) => value === Space.EmptySpace && prob === 1);
+  const newSafeSpotsDiscovered = cellProbabilities.filter(({ value, prob }) => value === Space.EmptySpace && prob === 0);
+  const otherClickableCells = cellProbabilities.filter(({ value, prob }) => value === Space.EmptySpace && prob !== 0 && prob !== 1);
+  const groups = groupBy(otherClickableCells, ({ prob }) => prob);
+  const lowest = Math.min(...Object.keys(groups).map(Number));
+  const nextState = applySuggestions(
+    data,
+    newBombsDisvovered.map(cellPropsToPosition),
+    newSafeSpotsDiscovered.map(cellPropsToPosition),
+    groups[lowest].map(cellPropsToPosition)
+  );
+  if (newBombsDisvovered.length === 0 && newSafeSpotsDiscovered.length === 0) {
+    return nextState;
+  }
+  // Since new spots discovered affect the probabilities, the calulation needs to be repeated
+  return nextSuggestedCells(nextState);
 }
 
-function visibleStateWithSuggestions(data: VisibleState): VisibleState {
+function applySuggestions(data: VisibleState, bombsToMark: Position[], safeSpotsToMark: Position[], lowProbabilities: Position[]): VisibleState {
   return produce(data, draft => {
-    for (const [ cell, row ] of nextClickableCells(data)) {
+    for (const [cell, row] of bombsToMark) {
+      draft[row][cell] = Space.MarkedAsBomb;
+    }
+    for (const [cell, row] of safeSpotsToMark) {
+      draft[row][cell] = 'KnownSafeSpace';
+    }
+    for (const [cell, row] of lowProbabilities) {
       draft[row][cell] = 'SuggestedClick';
     }
   });
@@ -144,21 +184,6 @@ function stateAfterClick(prevState: Space[][], cellClicked: number, rowClicked: 
     draft[rowClicked][cellClicked] = (cell === Space.HiddenBomb || cell === Space.ExplodedBomb) ?
       Space.ExplodedBomb : Space.ClickedSpace
   });
-  // const nextState = prevState.map((row, rowIndex) => 
-  //   row.map((cell, cellIndex) => {
-  //     // This function is called for **EVERY** cell in the matrix
-  //     if (rowIndex === rowClicked && cellIndex === cellClicked) {
-  //       // If we're in this block, it means we're looking at the cell that was clicked
-  //       if (cell === Space.HiddenBomb || cell === Space.ExplodedBomb) {
-  //         return Space.ExplodedBomb;
-  //       } else {
-  //         return Space.ClickedSpace;
-  //       }
-  //     } else {
-  //       // Cells that were not clicked are not changed, so we return the same element in the map call
-  //       return cell;
-  //     }
-  //   }));
 
   // Check if cell clicked has 0 neighbor bombs
   if (
@@ -166,22 +191,9 @@ function stateAfterClick(prevState: Space[][], cellClicked: number, rowClicked: 
     nearbyBombCount(rowClicked, cellClicked, nextState) === 0
   ) {
     // Go through all neighbors, and click them all
-    return relativeNeighbors.reduce((state: Space[][], neighbor: Position) => {
-      const cellId = cellClicked + neighbor[0];
-      const rowId = rowClicked + neighbor[1];
-
-      // Check if neighbor is within bounds of field
-      if (cellId < 0 || rowId < 0 || rowId >= state.length || cellId >= state[0].length) {
-        // Don't click anything outside bounds
-        return state;
-      }
-      const spaceClicked = state[rowId][cellId];
-      if (spaceClicked !== Space.EmptySpace) {
-        // Don't click on spaces that have already been clicked
-        return state;
-      }
-      return stateAfterClick(state, cellId, rowId);
-    }, nextState);
+    return relativeNeighborContent(prevState, cellClicked, rowClicked).reduce((state, { content, col, row }) =>
+      content !== Space.EmptySpace ? state : stateAfterClick(state, col, row)
+      , nextState);
   } else {
     // Since number on cell > 0, just return the state
     // dont click more cells
@@ -193,7 +205,7 @@ const App: React.FC = () => {
   const width = 10;
   const height = 10;
 
-  const [ data, setData ] = useState(generateRandomFields(width, height));
+  const [data, setData] = useState(generateRandomFields(width, height));
 
   function fieldClicked(rowClicked: number = 0, cellClicked: number = 0) {
     // When field is clicked, we check how would that affect the state,
@@ -202,30 +214,30 @@ const App: React.FC = () => {
   }
 
   const visibleSpaces = stateToVisible(data);
-  const visibleAndSuggested = visibleStateWithSuggestions(visibleSpaces);
+  const visibleAndSuggested = nextSuggestedCells(visibleSpaces);
 
   return (
     <div>
       <h1>MINESWEEPER!!</h1>
       <div id="table-container">
-      {
+        {
           isGameOver(data) ? <div>You lose</div> : null
         }
         {
           isGameWon(data) ? <div>You win</div> : null
         }
-          <table>
-            { visibleAndSuggested.map(((row, rowIndex) => <tr>
-              { row.map((cell, cellIndex) => 
-                <td
-                  onClick={() => fieldClicked(rowIndex, cellIndex)}
-                  className={bombClass(cell)}
-                >
-                  { typeof cell === 'number' ? cell : '' }
-                </td>
-              ) }
-            </tr>)) }
-          </table>
+        <table>
+          {visibleAndSuggested.map(((row, rowIndex) => <tr>
+            {row.map((cell, cellIndex) =>
+              <td
+                onClick={() => fieldClicked(rowIndex, cellIndex)}
+                className={bombClass(cell)}
+              >
+                {typeof cell === 'number' ? cell : ''}
+              </td>
+            )}
+          </tr>))}
+        </table>
       </div>
     </div>
   );
