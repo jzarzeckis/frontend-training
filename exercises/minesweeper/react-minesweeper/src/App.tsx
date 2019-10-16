@@ -3,9 +3,9 @@ import produce from 'immer';
 import './App.css';
 import { groupBy } from 'lodash';
 
-const assumedBombDensity = 0.2;
+const assumedBombDensity = 0.3;
 
-const actualBombDensity = 0.2;
+const actualBombDensity = 0.3;
 
 export enum Space {
   HiddenBomb = "Hidden",
@@ -144,7 +144,7 @@ function cellBombProbability(data: VisibleState, neighborProbabilities: Array<Ar
     return 1;
   }
   return neighbors.reduce((acc, nProb) =>
-    acc + nProb / neighbors.length
+    acc + nProb - (acc * nProb)
     , 0);
 }
 
