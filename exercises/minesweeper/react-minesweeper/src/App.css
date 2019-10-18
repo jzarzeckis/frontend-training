@@ -4,12 +4,16 @@ h1, h3 {
 table {
   margin: 10px auto;
 }
+.auto {
+  text-align: center;
+}
 td {
   border: 1px solid;
   width: 20px;
   height: 20px;
   text-align: center;
   box-sizing: border-box;
+  font-size: 11px;
 }
 .bomb {
   background-color: indianred;

@@ -1,11 +1,15 @@
-import React, { useReducer } from 'react';
+import React, { useReducer, useEffect, useState } from 'react';
 import produce from 'immer';
 import './App.css';
-import { groupBy } from 'lodash';
+import { groupBy, sample } from 'lodash';
+import generate from '@babel/generator';
 
-const assumedBombDensity = 0.1;
+const assumedBombDensity = 0.15;
 
-const actualBombDensity = 0.1;
+const actualBombDensity = 0.15;
+
+const width = 80;
+const height = 40;
 
 export enum Space {
   HiddenBomb = "Hidden",
@@ -214,11 +218,13 @@ function stateAfterClick(prevState: Space[][], cellClicked: number, rowClicked: 
   }
 }
 
-function clickReducer(state: Space[][], [col, row]: Position) {
+function clickReducer(state: Space[][], action: Position | 'RESTART') {
+  if (action === 'RESTART') {
+    return generateRandomFields(width, height);
+  }
+  const [col, row] = action;
   return stateAfterClick(state, col, row)
 }
-
-type SetData = (a: Space[][]) => void;
 
 function areRowsEqual(prev: VisibleCell[], next: VisibleCell[]) {
   for (let i = 0; i < prev.length; i++) {
@@ -232,7 +238,7 @@ const Cell = React.memo<{
   cellIndex: number,
   cell: VisibleCell,
   dispatch: React.Dispatch<Position>,
-}>(function ({ rowIndex, cellIndex, cell, dispatch }) {
+}>(function Cell({ rowIndex, cellIndex, cell, dispatch }) {
   return <td
     onClick={() => dispatch([cellIndex, rowIndex])}
     className={bombClass(cell)}
@@ -247,7 +253,7 @@ const Row = React.memo<{
   row: VisibleCell[],
   index: number,
   dispatch: React.Dispatch<Position>
-}>(function ({ row, index, dispatch }) {
+}>(function Row({ row, index, dispatch }) {
   return <tr>
     {row.map((cell, cellIndex) => <Cell
       key={`c-${index}-${cellIndex}`}
@@ -257,22 +263,57 @@ const Row = React.memo<{
       dispatch={dispatch}
     />)}
   </tr>
-}, function ({ row: prevRow, index: prevIndex }, { row: nextRow, index: nextIndex }) {
+}, function ({ row: prevRow }, { row: nextRow }) {
   return areRowsEqual(prevRow, nextRow);
 });
 
-const App: React.FC = () => {
-  const width = 40;
-  const height = 40;
+function decideNextClick(state: VisibleState): Position {
+  const groups = groupBy(state.flatMap((row, rowIndex) =>
+    row.map((cell, cellIndex): { c: VisibleCell, p: Position } =>
+      ({ c: cell, p: [cellIndex, rowIndex] })))
+    , i => i.c);
 
-  const [state, dispatch] = useReducer(clickReducer, generateRandomFields(width, height))
+  const { KnownSafeSpace, SuggestedClick } = groups;
+
+  const used = KnownSafeSpace ? KnownSafeSpace : SuggestedClick;
+  return sample(used)!.p;
+}
+
+const initialState = generateRandomFields(width, height);
+
+const App: React.FC = () => {
+  const [state, dispatch] = useReducer(clickReducer, initialState);
+  const [isAutoPlay, setAutoPlay] = useState(false);
 
   const visibleSpaces = stateToVisible(state);
   const visibleAndSuggested = nextSuggestedCells(visibleSpaces);
 
+  useEffect(() => {
+    if (!isAutoPlay) {
+      return;
+    }
+    if (isGameOver(state)) {
+      dispatch('RESTART');
+      return;
+    }
+    if (isGameWon(state)) {
+      setAutoPlay(false);
+      return;
+    }
+    const t = setTimeout(() => {
+      dispatch(decideNextClick(visibleAndSuggested));
+    }, 0);
+    return () => {
+      clearTimeout(t);
+    }
+  }, [visibleAndSuggested, isAutoPlay, state])
+
   return (
     <div>
       <h1>MINESWEEPER!!</h1>
+      <div className="auto">
+        {isAutoPlay ? <button onClick={() => setAutoPlay(false)}>Stop</button> : <button onClick={() => setAutoPlay(true)}>AutoPlay</button>}
+      </div>
       <div id="table-container">
         {
           isGameOver(state) ? <div>You lose</div> : null
