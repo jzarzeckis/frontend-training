@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useReducer } from 'react';
 import produce from 'immer';
 import './App.css';
 import { groupBy } from 'lodash';
 
-const assumedBombDensity = 0.3;
+const assumedBombDensity = 0.1;
 
-const actualBombDensity = 0.3;
+const actualBombDensity = 0.1;
 
 export enum Space {
   HiddenBomb = "Hidden",
@@ -214,46 +214,80 @@ function stateAfterClick(prevState: Space[][], cellClicked: number, rowClicked: 
   }
 }
 
-const App: React.FC = () => {
-  const width = 10;
-  const height = 10;
+function clickReducer(state: Space[][], [col, row]: Position) {
+  return stateAfterClick(state, col, row)
+}
 
-  const [data, setData] = useState(generateRandomFields(width, height));
+type SetData = (a: Space[][]) => void;
 
-  function fieldClicked(rowClicked: number = 0, cellClicked: number = 0) {
-    // When field is clicked, we check how would that affect the state,
-    // and update it in react, so that react would render it
-    setData(stateAfterClick(data, cellClicked, rowClicked));
+function areRowsEqual(prev: VisibleCell[], next: VisibleCell[]) {
+  for (let i = 0; i < prev.length; i++) {
+    if (prev[i] !== next[i]) return false;
   }
+  return true;
+}
 
+const Cell = React.memo<{
+  rowIndex: number,
+  cellIndex: number,
+  cell: VisibleCell,
+  dispatch: React.Dispatch<Position>,
+}>(function ({ rowIndex, cellIndex, cell, dispatch }) {
+  return <td
+    onClick={() => dispatch([cellIndex, rowIndex])}
+    className={bombClass(cell)}
+  >
+    {typeof cell === 'number' ? cell : ''}
+  </td>
+}, function ({ cell: prevCell }, { cell: nextCell }) {
+  return prevCell === nextCell;
+});
 
-  const visibleSpaces = stateToVisible(data);
+const Row = React.memo<{
+  row: VisibleCell[],
+  index: number,
+  dispatch: React.Dispatch<Position>
+}>(function ({ row, index, dispatch }) {
+  return <tr>
+    {row.map((cell, cellIndex) => <Cell
+      key={`c-${index}-${cellIndex}`}
+      rowIndex={index}
+      cellIndex={cellIndex}
+      cell={cell}
+      dispatch={dispatch}
+    />)}
+  </tr>
+}, function ({ row: prevRow, index: prevIndex }, { row: nextRow, index: nextIndex }) {
+  return areRowsEqual(prevRow, nextRow);
+});
+
+const App: React.FC = () => {
+  const width = 40;
+  const height = 40;
+
+  const [state, dispatch] = useReducer(clickReducer, generateRandomFields(width, height))
+
+  const visibleSpaces = stateToVisible(state);
   const visibleAndSuggested = nextSuggestedCells(visibleSpaces);
-  // console.log('probabilities', data.map((row, rowIndex) => row.map((cell, cellIndex) => neighborBombProbability(visibleAndSuggested, rowIndex, cellIndex))));
 
   return (
     <div>
       <h1>MINESWEEPER!!</h1>
       <div id="table-container">
         {
-          isGameOver(data) ? <div>You lose</div> : null
+          isGameOver(state) ? <div>You lose</div> : null
         }
         {
-          isGameWon(data) ? <div>You win</div> : null
+          isGameWon(state) ? <div>You win</div> : null
         }
         <table>
           <tbody>
-            {visibleAndSuggested.map(((row, rowIndex) => <tr key={`r-${rowIndex}`}>
-              {row.map((cell, cellIndex) =>
-                <td
-                  key={`c-${row}-${cellIndex}`}
-                  onClick={() => fieldClicked(rowIndex, cellIndex)}
-                  className={bombClass(cell)}
-                >
-                  {typeof cell === 'number' ? cell : ''}
-                </td>
-              )}
-            </tr>))}
+            {visibleAndSuggested.map(((row, rowIndex) => <Row
+              key={rowIndex}
+              row={row}
+              index={rowIndex}
+              dispatch={dispatch}
+            />))}
           </tbody>
         </table>
         <h3>Legend</h3>
