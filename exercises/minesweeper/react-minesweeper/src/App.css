@@ -7,6 +7,18 @@ table {
 .auto {
   text-align: center;
 }
+ul.btns {
+  display: flex;
+  width: 300px;
+  margin: 10px auto;
+  padding: 0;
+}
+ul.btns li {
+  display: block;
+}
+p.density {
+  text-align: center;
+}
 td {
   border: 1px solid;
   width: 20px;

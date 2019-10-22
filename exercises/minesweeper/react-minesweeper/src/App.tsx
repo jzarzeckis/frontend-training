@@ -2,9 +2,9 @@ import React, { useReducer, useEffect, useState } from 'react';
 import produce from 'immer';
 import './App.css';
 import { groupBy, sample } from 'lodash';
-import generate from '@babel/generator';
+import { tsImportEqualsDeclaration } from '@babel/types';
 
-const assumedBombDensity = 0.15;
+const assumedBombDensity = 0.19;
 
 const actualBombDensity = 0.15;
 
@@ -148,8 +148,8 @@ function cellBombProbability(data: VisibleState, neighborProbabilities: Array<Ar
     return 1;
   }
   return neighbors.reduce((acc, nProb) =>
-    acc + nProb - (acc * nProb)
-    , 0);
+    acc + nProb
+    , 0) / neighbors.length;
 }
 
 function cellPropsToPosition({ cellIndex, rowIndex }: { cellIndex: number, rowIndex: number }): Position {
@@ -226,8 +226,20 @@ function clickReducer(state: Space[][], action: Position | 'RESTART') {
   return stateAfterClick(state, col, row)
 }
 
+type PossiblePhase = 'WAITING' | 'PLAYING' | 'LOST' | 'WON';
+
+function phaseReducer(state: PossiblePhase, action: 'LOSE' | 'WIN' | 'START'): PossiblePhase {
+  if (action === 'START') {
+    return 'PLAYING';
+  } else if (action === 'LOSE') {
+    return 'LOST';
+  } else {
+    return 'WON';
+  }
+}
+
 function areRowsEqual(prev: VisibleCell[], next: VisibleCell[]) {
-  for (let i = 0; i < prev.length; i++) {
+  for (let i = 0; i < next.length; i++) {
     if (prev[i] !== next[i]) return false;
   }
   return true;
@@ -281,32 +293,122 @@ function decideNextClick(state: VisibleState): Position {
 
 const initialState = generateRandomFields(width, height);
 
-const App: React.FC = () => {
-  const [state, dispatch] = useReducer(clickReducer, initialState);
-  const [isAutoPlay, setAutoPlay] = useState(false);
+function charToVisibleCell(c: string): VisibleCell {
+  return c === '□' ? Space.EmptySpace :
+    c === '*' ? Space.ExplodedBomb :
+      parseInt(c)
+}
 
-  const visibleSpaces = stateToVisible(state);
-  const visibleAndSuggested = nextSuggestedCells(visibleSpaces);
+function bombDensityInVisibleCells(state: VisibleState): number {
+  const consideredCells = state.flatMap(row => row.filter(cell => typeof cell === 'number' || cell === Space.MarkedAsBomb || cell === Space.ExplodedBomb));
+  return consideredCells.filter(c => c === Space.MarkedAsBomb || c === Space.ExplodedBomb).length / consideredCells.length;
+}
+
+class QuickSolver {
+  public state: VisibleState = [[]];
+  private isRunning: boolean = true;
+  update(
+    state: VisibleState,
+    ws: WebSocket
+  ) {
+    this.state = state;
+    setTimeout(() => {
+      if (this.isRunning) {
+        this.clickCell(decideNextClick(nextSuggestedCells(state)), ws)
+      }
+    }, 10);
+  }
+  private clickCell([col, row]: Position, ws: WebSocket) {
+    ws.send(`open ${col} ${row}`);
+    ws.send('map');
+  }
+  stop() {
+    this.isRunning = false;
+  }
+  start() {
+    this.isRunning = true;
+  }
+}
+
+const App: React.FC = () => {
+  const [ws, setWs] = useState<WebSocket>()
+  // const [state, dispatch] = useReducer(clickReducer, initialState);
+  const [state, setState] = useState<VisibleState>([[]]);
+  const [isAutoPlay, setAutoPlay] = useState(false);
+  const [gamePhase, dispatchPhase] = useReducer(phaseReducer, 'WAITING')
+  const [levelChosen, setLevelChosen] = useState(1);
+  const [quickSolver, _] = useState(new QuickSolver())
+
+  const visibleAndSuggested = nextSuggestedCells(state);
 
   useEffect(() => {
-    if (!isAutoPlay) {
-      return;
+    const w = new WebSocket('wss://hometask.eg1236.com/game1/');
+    w.onopen = () => {
+      setWs(w);
     }
-    if (isGameOver(state)) {
-      dispatch('RESTART');
-      return;
+    w.onmessage = ({ data }: { data: string }) => {
+      if (data.startsWith('new: OK')) {
+        dispatchPhase('START');
+      } else if (data.startsWith('map:')) {
+        const rows = data.split('\n');
+        quickSolver.update(
+          rows.slice(1).map(row => row.split('').map(charToVisibleCell)),
+          w
+        );
+      } else if (data.startsWith('open: You lose')) {
+        quickSolver.stop()
+        dispatchPhase('LOSE');
+      } else if (data.startsWith('open: You win')) {
+        quickSolver.stop();
+        dispatchPhase('WIN');
+        console.log(data);
+      }
     }
-    if (isGameWon(state)) {
-      setAutoPlay(false);
-      return;
-    }
-    const t = setTimeout(() => {
-      dispatch(decideNextClick(visibleAndSuggested));
-    }, 0);
     return () => {
-      clearTimeout(t);
+      w.close();
     }
-  }, [visibleAndSuggested, isAutoPlay, state])
+  }, []);
+
+  function clickCell([col, row]: Position) {
+    if (!ws) {
+      return;
+    }
+    ws.send(`open ${col} ${row}`);
+    ws.send('map');
+  }
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setState(quickSolver.state);
+    }, 200);
+    return () => {
+      clearInterval(t);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (gamePhase === 'LOST') {
+      quickSolver.start();
+      startLevel(levelChosen);
+      return;
+    }
+    if (gamePhase === 'WON') {
+      quickSolver.stop()
+      setState(quickSolver.state);
+      return;
+    }
+  }, [gamePhase])
+
+  function startLevel(num: number) {
+    if (!ws) {
+      return;
+    }
+    setLevelChosen(num);
+    ws.send(`new ${num}`);
+    ws.send('map');
+  }
+
+  const bombDensity = bombDensityInVisibleCells(visibleAndSuggested).toFixed(3);
 
   return (
     <div>
@@ -315,11 +417,15 @@ const App: React.FC = () => {
         {isAutoPlay ? <button onClick={() => setAutoPlay(false)}>Stop</button> : <button onClick={() => setAutoPlay(true)}>AutoPlay</button>}
       </div>
       <div id="table-container">
+        <p className="density">Density: {bombDensity}</p>
+        <ul className="btns">
+          {[1, 2, 3, 4].map(n => <li key={n}><button onClick={() => startLevel(n)}>Start Level {n}</button></li>)}
+        </ul>
         {
-          isGameOver(state) ? <div>You lose</div> : null
+          gamePhase === 'LOST' ? <div>You lose</div> : null
         }
         {
-          isGameWon(state) ? <div>You win</div> : null
+          gamePhase === 'WON' ? <div>You win</div> : null
         }
         <table>
           <tbody>
@@ -327,7 +433,7 @@ const App: React.FC = () => {
               key={rowIndex}
               row={row}
               index={rowIndex}
-              dispatch={dispatch}
+              dispatch={clickCell}
             />))}
           </tbody>
         </table>
