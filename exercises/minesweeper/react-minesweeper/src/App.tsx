@@ -18,13 +18,13 @@ export enum Space {
   ClickedSpace = "Clicked",
   MarkedAsBomb = "Marked"
 }
-type VisibleCell = Space.ExplodedBomb | Space.EmptySpace | Space.MarkedAsBomb | 'SuggestedClick' | 'KnownSafeSpace' | number;
+export type VisibleCell = Space.ExplodedBomb | Space.EmptySpace | Space.MarkedAsBomb | 'SuggestedClick' | 'KnownSafeSpace' | number;
 type VisibleState = VisibleCell[][];
 
 /**
  * [ column, row ]
  */
-type Position = [number, number];
+export type Position = [number, number];
 // Array containing **relative** indices of the cells around some cell
 const relativeNeighbors: Position[] = [
   [-1, -1], [0, -1], [1, -1],
@@ -32,14 +32,15 @@ const relativeNeighbors: Position[] = [
   [-1, 1], [0, 1], [1, 1]
 ];
 
-function relativeNeighborContent<T>(data: T[][], col: number, row: number): { content: T, col: number, row: number }[] {
+export function relativeNeighborContent<T>(data: T[][], col: number, row: number): { content: T, col: number, row: number }[] {
+  const s = Symbol();
   return relativeNeighbors.map(([rCol, rRow]) => {
     const absCol = col + rCol;
     const absRow = row + rRow;
-    if (absRow < 0 || absRow >= data.length) return null;
-    if (absCol < 0 || absCol >= data[absRow].length) return null;
+    if (absRow < 0 || absRow >= data.length) return s;
+    if (absCol < 0 || absCol >= data[absRow].length) return s;
     return { content: data[absRow][absCol], col: absCol, row: absRow };
-  }).filter((x): x is { content: T, col: number, row: number } => x !== null);
+  }).filter((x): x is { content: T, col: number, row: number } => x !== s);
 }
 
 export function bombClass(input: VisibleCell) {
@@ -67,7 +68,7 @@ export function generateRandomFields(width: number, height: number): Space[][] {
 export function nearbyBombCount(
   rowIndex: number,
   cellIndex: number,
-  matrix: Array<Array<Space>>
+  matrix: Array<Array<Space | number>>
 ) {
   // Iterate through all neighbors of this cell, and count bombs
   return relativeNeighborContent(matrix, cellIndex, rowIndex).reduce((count, { content }) =>
@@ -312,11 +313,11 @@ class QuickSolver {
     ws: WebSocket
   ) {
     this.state = state;
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       if (this.isRunning) {
         this.clickCell(decideNextClick(nextSuggestedCells(state)), ws)
       }
-    }, 10);
+    });
   }
   private clickCell([col, row]: Position, ws: WebSocket) {
     ws.send(`open ${col} ${row}`);
